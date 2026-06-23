@@ -1,6 +1,6 @@
 # /transcript-scan
 
-Extract facts, hypotheses, and meetings from a transcript. Route confirmed items to the vault.
+Extract facts, hypotheses, action items, decisions, meetings, principal signals, and open questions from a transcript. Route confirmed items to the vault.
 
 **Invocation:** `/transcript-scan <filename>`
 
@@ -38,20 +38,51 @@ If a `.txt` file does not appear to have `Speaker: text` speaker labels (e.g., n
 
 ## Step 3 — Extraction
 
-Read through the cleaned transcript and extract items.
+Read through the cleaned transcript and extract items across seven types.
+
+### Cross-cutting: Salience tagging
+
+Before classifying by type, watch for salience signals throughout the transcript. Any item that appears alongside the following words gets `salience: true` and a brief `salience_reason`:
+
+**Trigger words:** "flag", "risk", "blocker", "concern", "milestone", "critical path", "strategic", "the bet", "make-or-break", "executive wants", "ELT wants", "board wants", "leadership wants"
+
+Set `salience_reason` to a short phrase capturing why it was flagged (e.g., `"flagged as blocker"`, `"leadership priority"`).
+
+---
 
 ### What to extract
 
 **Facts** — definitive claims stated as true.
 - Include: named numbers, percentages, dates, confirmed outcomes, unambiguous status statements.
+- Certainty boosters — these words raise confidence to `high` even for unresolved speakers: "confirmed", "the data shows", "definitely", "we know", "no question", "my number", "I own that".
 - Exclude: questions, speculation, "we should", wishes, softened language.
 
 **Hypotheses** — working theories or beliefs stated with uncertainty.
-Trigger words: "I think", "maybe", "probably", "we could", "might", "perhaps", "I wonder", "I believe", "it seems", "I'd expect".
+- Trigger words: "I think", "I bet", "maybe", "probably", "my read is", "we could", "might", "could be", "perhaps", "I wonder", "I believe", "it seems", "I'd expect", "roughly", "my gut".
+
+**Action Items** — commitments by a named person to do something.
+- Trigger words: "I'll", "can you", "[name] will", "take the lead", "owns that", "action item", "next steps", "follow up", "make sure".
+- Capture: who owns it, what the action is, and any deadline phrase: "by Friday", "before the review", "EOD", "this quarter", "due", "ahead of".
+- Only extract when ownership is clear (a named person or "I").
+- If an open question is assigned to someone with a deadline, extract as both an Open Question and an Action Item.
+
+**Decisions** — closure on a question or direction.
+- Explicit: "let's go with", "final call", "approved", "signed off", "locked", "agreed".
+- Implied (assent-after-proposal): "sounds good", "works for me", "great, moving on", "unless anyone objects" followed by no objection, silence treated as agreement after a specific proposal.
 
 **Meetings** — commitments to convene people.
-- Explicit: "let's schedule X", "I'll send a calendar invite", "can we set up a call about X".
+- Explicit: "let's schedule X", "I'll send a calendar invite", "can we set up a call about X", "let's sync", "book time", "get [X] in a room", "regroup before".
 - Implicit: "we need to align on X" when the other party agrees ("yes, let's do that", "agreed").
+
+**Principal Signals** — statements of personal priority, constraint, or non-negotiable position.
+- Trigger words: "I care about", "my priority", "non-negotiable", "the bar is", "I'm not willing to", "the constraint is".
+- Note which lever the signal applies to: budget, headcount, roadmap, pricing, margin, deal, or other.
+
+**Open Questions** — things explicitly unresolved or unknown.
+- Trigger words: "we don't know", "TBD", "need to find out", "unclear", "let's figure out", "outstanding".
+- If someone is assigned to answer it AND a deadline is mentioned, also extract as an Action Item.
+
+---
 
 ### Authority assignment (apply per extracted item)
 
@@ -71,6 +102,8 @@ Match the speaker name against all roster `aliases` fields (case-insensitive). A
 | Resolved AND claim domain ∉ speaker's `domains` | `non_owner` | `low` |
 | Unresolved | `unknown` | `low` |
 
+A certainty booster (see Facts above) overrides `low` confidence to `high` even when authority is `unknown`.
+
 **Claim domain** is the topic area of the claim (e.g., a claim about "Q2 cost-to-serve" belongs to finance/cost domain).
 
 **Step C — Default for unknown authority**
@@ -86,7 +119,8 @@ When unsure whether to extract, extract and flag for review rather than discard.
 ## Step 4 — Auto-routing
 
 For every extracted item where `confidence: high` AND `authority: owner`:
-- Write directly to `vault/facts.json` using the schema defined in Step 6.
+- Facts → write directly to `vault/facts.json` using the schema defined in Step 6.
+- Decisions → write directly to `vault/decisions.json` using the schema defined in Step 6.
 - Do NOT present these to the user in Q&A — they are auto-confirmed.
 
 ---
@@ -95,39 +129,66 @@ For every extracted item where `confidence: high` AND `authority: owner`:
 
 Present remaining items one at a time, in order of appearance in the transcript.
 
-**For facts and hypotheses:**
+Wait for user input before moving to the next item.
 
-For items extracted as facts:
+**Facts:**
 ```
 [FACT?] "<claim>" (<speaker> — <authority>, <confidence>)
 Source: "<source_span>"
 → confirm as [f]act, [h]yp, or [s]kip to review:
 ```
 
-For items extracted as hypotheses:
+**Hypotheses:**
 ```
 [HYP?] "<theory>" (<speaker> — <authority>, <confidence>)
 Source: "<source_span>"
 → confirm as [f]act, [h]yp, or [s]kip to review:
 ```
 
-Wait for user input before moving to the next item.
+**Action Items:**
+```
+[ACTION?] "<action>" (owner: <name>, deadline: <deadline or none>)
+Source: "<source_span>"
+→ confirm as [a]ction or [s]kip to review:
+```
 
-Routing:
-- `f` → write to `vault/facts.json`
-- `h` → write to `vault/hypotheses.json` (if originally extracted as a fact, demote it)
-- `s` → add to skipped list (for review file)
+**Decisions:**
+```
+[DECISION?] "<what was decided>" (decided by: <name or group>)
+Source: "<source_span>"
+→ confirm as [d]ecision or [s]kip to review:
+```
 
-**For meetings:**
-
+**Meetings:**
 ```
 [MEETING?] "<purpose>" (convener: <name>)
+Source: "<source_span>"
 → confirm as [m]eeting or [s]kip to review:
 ```
 
+**Principal Signals:**
+```
+[SIGNAL?] "<what they said>" (<speaker> — lever: <lever>)
+Source: "<source_span>"
+→ confirm as [si]gnal or [s]kip to review:
+```
+
+**Open Questions:**
+```
+[QUESTION?] "<what's unclear>"
+Source: "<source_span>"
+→ confirm as [q]uestion or [s]kip to review:
+```
+
 Routing:
-- `m` → write to `vault/meetings.json`
-- `s` → add to skipped list
+- `f` → `vault/facts.json`
+- `h` → `vault/hypotheses.json`
+- `a` → `vault/actions.json`
+- `d` → `vault/decisions.json`
+- `m` → `vault/meetings.json`
+- `si` → `vault/signals.json`
+- `q` → `vault/questions.json`
+- `s` → add to skipped list (for review file)
 
 ---
 
@@ -135,10 +196,7 @@ Routing:
 
 ### Determine next sequence number
 
-For each target file (`facts.json`, `hypotheses.json`, `meetings.json`):
-1. Read the existing JSON array (it may be empty `[]`).
-2. Count IDs that start with today's date prefix (e.g., `fact-2026-06-23-`).
-3. The next NNNN = that count (zero-padded to 4 digits; first ID of the day is `0000`).
+For each target file, read the existing JSON array and count IDs that start with today's date prefix (e.g., `fact-2026-06-23-`). The next NNNN = that count (zero-padded to 4 digits; first ID of the day is `0000`).
 
 Note: Auto-routed items written in Step 4 are already in the file. Re-read the file after Step 4 completes to get an accurate count before assigning new IDs.
 
@@ -152,6 +210,8 @@ Note: Auto-routed items written in Step 4 are already in the file. Re-read the f
   "authority": "owner|non_owner|unknown",
   "confidence": "high|low",
   "needs_review": false,
+  "salience": false,
+  "salience_reason": null,
   "source_span": "<verbatim quote from transcript>",
   "source": "<filename>",
   "created": "YYYY-MM-DD"
@@ -170,7 +230,42 @@ Note: Auto-routed items written in Step 4 are already in the file. Re-read the f
   "authority": "owner|non_owner|unknown",
   "confidence": "high|low",
   "needs_review": false,
+  "salience": false,
+  "salience_reason": null,
   "would_confirm": "<what evidence would confirm this — infer from context, or null>",
+  "source_span": "<verbatim quote from transcript>",
+  "source": "<filename>",
+  "created": "YYYY-MM-DD"
+}
+```
+
+### Action Items JSON item
+
+```json
+{
+  "id": "action-YYYY-MM-DD-NNNN",
+  "action": "<what needs to be done>",
+  "owner": "<resolved name, or raw transcript name if unresolved>",
+  "deadline": "<deadline phrase, e.g. 'by Friday', '2026-07-01', or null>",
+  "status": "open",
+  "salience": false,
+  "salience_reason": null,
+  "source_span": "<verbatim quote from transcript>",
+  "source": "<filename>",
+  "created": "YYYY-MM-DD"
+}
+```
+
+### Decisions JSON item
+
+```json
+{
+  "id": "decision-YYYY-MM-DD-NNNN",
+  "decision": "<what was decided>",
+  "decided_by": "<name or group, e.g. 'Sarah Klein', 'team'>",
+  "context": "<brief context for the decision — infer from surrounding transcript>",
+  "salience": false,
+  "salience_reason": null,
   "source_span": "<verbatim quote from transcript>",
   "source": "<filename>",
   "created": "YYYY-MM-DD"
@@ -187,6 +282,40 @@ Note: Auto-routed items written in Step 4 are already in the file. Re-read the f
   "attendees": ["<name>", "<name>"],
   "target_timing": "<any mentioned timing, e.g., 'next week', '2026-07-01', or null>",
   "status": "pending",
+  "salience": false,
+  "salience_reason": null,
+  "source_span": "<verbatim quote from transcript>",
+  "source": "<filename>",
+  "created": "YYYY-MM-DD"
+}
+```
+
+### Principal Signals JSON item
+
+```json
+{
+  "id": "signal-YYYY-MM-DD-NNNN",
+  "signal": "<what they said>",
+  "speaker": "<resolved name, or raw transcript name if unresolved>",
+  "lever": "budget|headcount|roadmap|pricing|margin|deal|other",
+  "salience": false,
+  "salience_reason": null,
+  "source_span": "<verbatim quote from transcript>",
+  "source": "<filename>",
+  "created": "YYYY-MM-DD"
+}
+```
+
+### Open Questions JSON item
+
+```json
+{
+  "id": "question-YYYY-MM-DD-NNNN",
+  "question": "<what's unclear or unknown>",
+  "raised_by": "<resolved name, or raw transcript name if unresolved>",
+  "owner": "<person assigned to answer it, or null>",
+  "salience": false,
+  "salience_reason": null,
   "source_span": "<verbatim quote from transcript>",
   "source": "<filename>",
   "created": "YYYY-MM-DD"
@@ -212,7 +341,7 @@ Source: <filename>
 
 ## Skipped Items
 
-### [FACT? / HYP? / MEETING?] <claim or purpose>
+### [FACT? / HYP? / ACTION? / DECISION? / MEETING? / SIGNAL? / QUESTION?] <claim or purpose>
 - Speaker: <name>
 - Authority: <authority>
 - Source: "<source_span>"
@@ -235,7 +364,7 @@ Source: <filename>
 Print exactly:
 
 ```
-X facts confirmed, Y hypotheses confirmed, Z meetings confirmed, N items → review
+X facts, Y hypotheses, Z action items, W decisions, V meetings, U signals, T questions confirmed, N items → review
 ```
 
 If a review file was written, add:
