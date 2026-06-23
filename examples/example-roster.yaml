@@ -1,0 +1,25 @@
+# Reference roster for transcript-skill vault.
+# Use /transcript-init to generate vault/roster.yaml interactively,
+# or copy and edit this file directly to vault/roster.yaml.
+
+project_name: Q3 Strategy
+
+people:
+  - name: Sarah Klein
+    role: CFO
+    # domains: topics this person is authoritative on.
+    # Claims about these domains made by this person get authority: owner, confidence: high.
+    domains: [finance, cost, budget, P&L]
+    # aliases: all forms of this person's name that appear in transcripts (case-insensitive).
+    # Include full name, first name, initials, and any common shorthand.
+    aliases: [Sarah, SK, Sarah K]
+
+  - name: Dev Patel
+    role: VP Engineering
+    domains: [engineering, infrastructure, velocity, hiring, technical debt]
+    aliases: [Dev, DP, Devraj]
+
+  - name: Marcus Reid
+    role: Head of Product
+    domains: [product, roadmap, features, UX, design, user research]
+    aliases: [Marcus, MR]
