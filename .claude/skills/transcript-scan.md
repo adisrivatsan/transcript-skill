@@ -32,6 +32,8 @@ Output: one `Name: text` line per speaker turn.
 
 `.txt` files are already in `Name: text` format — skip this step entirely.
 
+If a `.txt` file does not appear to have `Speaker: text` speaker labels (e.g., no colons, unstructured prose), warn the user: "This file doesn't appear to have speaker labels. Continue extraction anyway? (yes/no)" — stop if they say no.
+
 ---
 
 ## Step 3 — Extraction
@@ -84,7 +86,7 @@ When unsure whether to extract, extract and flag for review rather than discard.
 ## Step 4 — Auto-routing
 
 For every extracted item where `confidence: high` AND `authority: owner`:
-- Write directly to `vault/facts.json` using the schema below.
+- Write directly to `vault/facts.json` using the schema defined in Step 6.
 - Do NOT present these to the user in Q&A — they are auto-confirmed.
 
 ---
@@ -95,8 +97,16 @@ Present remaining items one at a time, in order of appearance in the transcript.
 
 **For facts and hypotheses:**
 
+For items extracted as facts:
 ```
 [FACT?] "<claim>" (<speaker> — <authority>, <confidence>)
+Source: "<source_span>"
+→ confirm as [f]act, [h]yp, or [s]kip to review:
+```
+
+For items extracted as hypotheses:
+```
+[HYP?] "<theory>" (<speaker> — <authority>, <confidence>)
 Source: "<source_span>"
 → confirm as [f]act, [h]yp, or [s]kip to review:
 ```
@@ -130,6 +140,8 @@ For each target file (`facts.json`, `hypotheses.json`, `meetings.json`):
 2. Count IDs that start with today's date prefix (e.g., `fact-2026-06-23-`).
 3. The next NNNN = that count (zero-padded to 4 digits; first ID of the day is `0000`).
 
+Note: Auto-routed items written in Step 4 are already in the file. Re-read the file after Step 4 completes to get an accurate count before assigning new IDs.
+
 ### Facts JSON item
 
 ```json
@@ -139,11 +151,14 @@ For each target file (`facts.json`, `hypotheses.json`, `meetings.json`):
   "stated_by": "<resolved name, or raw transcript name if unresolved>",
   "authority": "owner|non_owner|unknown",
   "confidence": "high|low",
+  "needs_review": false,
   "source_span": "<verbatim quote from transcript>",
   "source": "<filename>",
   "created": "YYYY-MM-DD"
 }
 ```
+
+`needs_review` becomes `true` when the alias resolution step flags an ambiguous speaker.
 
 ### Hypotheses JSON item
 
@@ -154,6 +169,7 @@ For each target file (`facts.json`, `hypotheses.json`, `meetings.json`):
   "held_by": "<resolved name, or raw transcript name if unresolved>",
   "authority": "owner|non_owner|unknown",
   "confidence": "high|low",
+  "needs_review": false,
   "would_confirm": "<what evidence would confirm this — infer from context, or null>",
   "source_span": "<verbatim quote from transcript>",
   "source": "<filename>",
@@ -184,6 +200,8 @@ Append new items to the existing array and write the file back.
 ## Step 7 — Write review file
 
 If any items were skipped OR any alias flags (`needs_review: true`) were raised, write `vault/review/YYYY-MM-DD-review.md` (today's date).
+
+For any item extracted under Step D's recall-bias rule (borderline items), add a brief entry under "Near-Discard Notes" explaining why it was included rather than discarded.
 
 If the file already exists for today, append to it.
 

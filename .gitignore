@@ -2,3 +2,6 @@
 *.tmp
 ~$*
 .~lock.*
+transcripts/*.vtt
+transcripts/*.txt
+!transcripts/.gitkeep
